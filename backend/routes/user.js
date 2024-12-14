@@ -5,6 +5,7 @@ const zod = require('zod');
 const jwt = require('jsonwebtoken');
 const { JWT_SECRET } = require('../config');
 const bcrypt = require('bcryptjs');
+const { authMiddleware } = require('../middlewares/authMiddleware');
 
 const signUpSchema = zod.object({
     username: zod.string().min(3).max(30),
@@ -17,7 +18,11 @@ const signInSchema = zod.object({
     username: zod.string().min(3).max(30),
     password: zod.string()
 });
-
+const updateUserSchema = zod.object({
+    password: zod.string().optional(),
+    firstName: zod.string().optional(),
+    lastName: zod.string().optional()
+});
 
 const userRoutes = new Router();
 
@@ -65,9 +70,26 @@ userRoutes.post("/signin", async (req, res) => {
 
 });
 
-userRoutes.post("/updateUser", (req, res) => {
-    console.log(req.body);
-    res.send('Hello World');
+userRoutes.post("/updateUser", authMiddleware, async (req, res) => {
+    const body = req.body;
+    const { success } = updateUserSchema.safeParse(body);
+    if (!success) {
+        return res.status(400).send('Incorrect input');
+    }
+    const { password, firstName, lastName } = body;
+
+    const salt = bcrypt.genSaltSync(10);
+    const hashPassword = bcrypt.hashSync(password, salt);
+    const user = await User.findOne({ _id: req.userId });
+    if (!user) {
+        return res.status(400).send('User does not exist');
+    }
+    await User.findOneAndUpdate({ _id: req.userId }, {
+        password: hashPassword,
+        firstName,
+        lastName
+    });
+    res.status(200).json({ message: 'User updated successfully' });
 });
 
 module.exports = userRoutes;
